@@ -63,12 +63,13 @@ In this guide the following will be done:
  .. code-block:: bash
 
     #BSUB -J spark
-    #BSUB -n 12
+    #BSUB -n 32
+    #BSUB -q 6-hours
     #BSUB -oo lsf_spark.o%J
     #BSUB -eo lsf_spark.e%J
     #BSUB -N
     #BSUB -u js00@aub.edu.lb
-    #BSUB -R "span[ptile=1]"
+    #BSUB -R "span[ptile=16]"
 
     source ~/spark-2.3.2-bin-hadoop2.7/conf/spark-env.sh
 
@@ -88,6 +89,13 @@ In this guide the following will be done:
     echo "create the reverse tunnel for the master web ui"
     ssh -R localhost:${SPARK_MASTER_WEBUI_PORT}:localhost:${SPARK_MASTER_WEBUI_PORT} head2 -N -f
 
+    # (optional)
+    echo "launch the jupyter server and create the reverse tunnel for the jupyter notebook"
+    module load python/3
+    export JUPYTER_PORT=38888
+    jupyter-lab  --no-browser --port=${JUPYTER_PORT} > jupyter.log 2>&1 &
+    ssh -R localhost:${JUPYTER_PORT}:localhost:${JUPYTER_PORT} head2 -N
+
     sleep infinity
 
 4) submit the job
@@ -100,6 +108,13 @@ In this guide the following will be done:
    details on the master and the slaves output. This could be very useful to
    troubleshoot in case something un-exepected happens.
 
-5) After the job execution is complete, make sure that the master and slaves
-   are stopped.
+5) run the spark shell
 
+   .. code-block:: bash
+
+      $ spark-shell --master spark://SPARK_HOST:SPARK_PORT
+
+   the SPARK_HOST:SPARK_PORT from the webui.
+
+6) After the job execution is complete, make sure that the master and slaves
+   are stopped.
