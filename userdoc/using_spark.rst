@@ -1,120 +1,66 @@
 Scientific computing with Spark
 -------------------------------
 
-The currently ``spark`` configuration should be set up by users. The
-instructions can be used to have a spark server running through the scheduler.
-In this guide the following will be done:
+The current ``spark`` configuration should be set up by users via the existing
+scheduler that runs on the HPC cluster. The instructions can be used to deploy a
+spark server (cluster) that runs through the HPC cluster's scheduler. The
+scheduler allocates the machines where the spark cluster will run. Beyond that
+these allocated resources are managed by spark.
 
-  - deploy spark in your home directory
-  - setup the environment file
-  - launch a job through the scheduler that spawns the spark master and slaves
-     + a tunnel is created to the login node that can be used to interact with
-       the spark master. This tunnel allows the user to check the web UI of
-       the spark master. Alternatively users can modify the job script to do
-       other tasks, such as launching a jupyter notebook to interact with
-       spark, or set up other tunnels.
+Setup the spark environment and launch the spark cluster
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-.. warning:: Users are discouraged to login to the compute nodes directly with
-  SSH.
+To launch a spark cluster with a jupyter notebook and pyspark the following
+commands should be executed:
 
-.. note:: make sure the spark master and server are killed after the job
- execution completes to free up resources. Also it might be a good idea to
- remove the log files too.
+.. code-block:: bash
 
-1) Obtain a copy of spark and extract it
+    cd ~/
+    tar -xzvf /gpfs1/apps/sw/spark/spark-2.3.2-bin-hadoop2.7-userspace.tgz
+    mv spark-2.3.2-bin-hadoop2.7-userspace spark-2.3.2-bin-hadoop2.7
+    mkdir ~/workdir
+    cd ~/workdir
+    cp /gpfs1/apps/sw/spark/*.sh /gpfs1/apps/sw/spark/*.ipynb ~/workdir
+    mv job_template.sh job.sh
+    # edit the port numbers in job.sh and the email address
+    bsub < job.sh
 
-   .. code-block:: bash
+Connect to the spark web ui and jupyter notebook server
++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-     $ cp /gpfs1/shared/spark-2.3.2-bin-hadoop2.7.tgz ~/
-     $ tar -xzvf spark-2.3.2-bin-hadoop2.7.tgz
+To connect to the spark master web UI and to the jupter notebook, create tunnels
+by forwarding the local network traffic to the spark master port and the jupyter
+server ports that are specified in ``job.sh``. The url for the jupter notebook
+is dumped to ``jupyter.log`` in the ``workdir``.
 
-2) Create the ``spark-env.sh`` file and customize it to your configuration. The
- following template can be used.
+.. code-block:: text
 
- .. code-block:: bash
+     # spark master web ui
+     http://localhost:[PORT_USED_FOR_THE_WEBUI]
+     # jupyter notebook with pyspark enabled
+     http://localhost:[PORT_USED_FOR_JUPYTER]/?token=[TOKEN_FROM_jupyter.log]
 
-    #!/usr/bin/env bash
-    export SPARK_HOME=${HOME}/spark-2.3.2-bin-hadoop2.7
-    export PATH=${SPARK_HOME}/bin:${SPARK_HOME}/sbin:${PATH}
-    export LD_LIBRARY_PATH=${SPARK_HOME}/lib:${LD_LIBRARY_PATH}
+Cleanup the spark master and slaves
++++++++++++++++++++++++++++++++++++
 
-    module load java/java8
-    module load scala/2.12.7
+To terminate the spark cluster execute:
 
-    module load python/3
-    export PYSPARK_DRIVER_PYTHON="jupyter"
-    export PYSPARK_DRIVER_PYTHON_OPTS="notebook"
-    export PYSPARK_PYTHON=`which python`
+.. code-block:: bash
 
- Make the script executable using:
+     ~/workdir/killall_java.sh
 
- .. code-block:: bash
+note that this command is just a simple wrapper that kills all java processess
+for the user on all the compute nodes. This is a temporary solution. In the
+future this script will be replaced by the appropriate spark calls for
+terminating the master and the slaves.
 
-    $ chmod +x spark-env.sh
+It is recommended to check the disk usage of the directories
+``${SPARKHOME}/log`` and ``${SPARKHOME}/work`` and wipe them if their size
+becomes too big or if the logs and the data in the ``work`` dir are not needed.
 
-  and copy it to the ``spark`` configuration directory
+The content of the template job script
+++++++++++++++++++++++++++++++++++++++
 
- .. code-block:: bash
-
-    $ cp spark-env.sh ~/spark-2.3.2-bin-hadoop2.7/conf
-
-3) Create the job script ``job.sh`` and if needed adjust some of the parameters
-
- .. code-block:: bash
-
-    #BSUB -J spark
-    #BSUB -n 32
-    #BSUB -q 6-hours
-    #BSUB -oo lsf_spark.o%J
-    #BSUB -eo lsf_spark.e%J
-    #BSUB -N
-    #BSUB -u js00@aub.edu.lb
-    #BSUB -R "span[ptile=16]"
-
-    source ~/spark-2.3.2-bin-hadoop2.7/conf/spark-env.sh
-
-    export SPARK_MASTER_PORT=7077
-    export SPARK_MASTER_WEBUI_PORT=8089
-    export SPARK_MASTER_HOST=${HOSTNAME}
-    export SPARK_SLAVES=${LSB_DJOB_RANKFILE}
-
-    echo "LSB job rankfile: "${LSB_DJOB_RANKFILE}
-    cat ${LSB_DJOB_RANKFILE}
-
-    echo "spark_job_userspace.sh: launch the master"
-    start-master.sh --host ${SPARK_MASTER_HOST}
-    echo "spark_job_userspace.sh: launch the slaves"
-    start-slaves.sh
-
-    echo "create the reverse tunnel for the master web ui"
-    ssh -R localhost:${SPARK_MASTER_WEBUI_PORT}:localhost:${SPARK_MASTER_WEBUI_PORT} head2 -N -f
-
-    # (optional)
-    echo "launch the jupyter server and create the reverse tunnel for the jupyter notebook"
-    module load python/3
-    export JUPYTER_PORT=38888
-    jupyter-lab  --no-browser --port=${JUPYTER_PORT} > jupyter.log 2>&1 &
-    ssh -R localhost:${JUPYTER_PORT}:localhost:${JUPYTER_PORT} head2 -N
-
-    sleep infinity
-
-4) submit the job
-
-   .. code-block:: bash
-
-       $ bsub < job.sh
-
-   Have a look at the files in ``~/spark-2.3.2-bin-hadoop2.7/logs`` for
-   details on the master and the slaves output. This could be very useful to
-   troubleshoot in case something un-exepected happens.
-
-5) run the spark shell
-
-   .. code-block:: bash
-
-      $ spark-shell --master spark://SPARK_HOST:SPARK_PORT
-
-   the SPARK_HOST:SPARK_PORT from the webui.
-
-6) After the job execution is complete, make sure that the master and slaves
-   are stopped.
+.. literalinclude:: spark/job_template.sh
+   :linenos:
+   :language: bash
