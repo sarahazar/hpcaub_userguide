@@ -35,14 +35,14 @@ for a serial or parallel programs.
 .. note:: For a serial job ``-n 1`` should be requested. The rest of the flags
  are arbitrary.
 
-Batch jos submission and monitoring procedure
+Batch job submission and monitoring procedure
 =============================================
 
 - submit the job script using LSF
 
   .. code-block:: bash
 
-      $ bsun < my_job_script.sh
+      $ bsub < my_job_script.sh
 
   This will submit the job to the queueing system. The job could run immediately
   or set in pending mode until the requested resources are available for the job
